@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import type { Waypoint, NoFlyZone, TerrainPoint, FlightPlan, DroneConfig } from '../types';
+import type { Waypoint, NoFlyZone, TerrainPoint, FlightPlan, DroneConfig, FlightEvent, FlightEventType } from '../types';
 import {
   aStarPathfind,
   rrtPathfind,
@@ -21,6 +21,9 @@ export const useDroneStore = defineStore('drone', () => {
   const isSimulating = ref(false);
   const simProgress = ref(0);
   const mapCenter = ref<[number, number]>([39.9, 116.4]);
+  const flightEvents = ref<FlightEvent[]>([]);
+  const currentWaypointIndex = ref(-1);
+  const simStartTime = ref<number>(0);
 
   const droneConfig = ref<DroneConfig>({
     maxAltitude: 500,
@@ -68,6 +71,7 @@ export const useDroneStore = defineStore('drone', () => {
     waypoints.value = [];
     currentPlan.value = null;
     simProgress.value = 0;
+    clearFlightEvents();
   }
 
   function updatePlan() {
@@ -84,15 +88,104 @@ export const useDroneStore = defineStore('drone', () => {
 
   let simInterval: ReturnType<typeof setInterval> | null = null;
 
+  function addFlightEvent(
+    type: FlightEventType,
+    message: string,
+    options?: Partial<FlightEvent>
+  ) {
+    const event: FlightEvent = {
+      id: `evt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      type,
+      timestamp: Date.now(),
+      message,
+      ...options,
+    };
+    flightEvents.value.push(event);
+  }
+
+  function clearFlightEvents() {
+    flightEvents.value = [];
+    currentWaypointIndex.value = -1;
+  }
+
+  function getSimWaypointIndex(): number {
+    const progress = simProgress.value / 100;
+    const totalWp = waypoints.value.length;
+    if (totalWp < 2) return -1;
+    const idx = Math.min(Math.floor(progress * (totalWp - 1)), totalWp - 2);
+    const segProgress = progress * (totalWp - 1) - idx;
+    return segProgress >= 0.99 ? idx + 1 : idx;
+  }
+
   function simulateFlight() {
     if (waypoints.value.length < 2 || isSimulating.value) return;
     isSimulating.value = true;
     simProgress.value = 0;
+    simStartTime.value = Date.now();
+    clearFlightEvents();
+
+    const startWp = waypoints.value[0];
+    addFlightEvent('takeoff', '无人机起飞', {
+      waypointIndex: 0,
+      waypointId: startWp.id,
+      lat: startWp.lat,
+      lng: startWp.lng,
+      altitude: startWp.altitude,
+    });
+    currentWaypointIndex.value = 0;
+
+    let lastWpIdx = 0;
+    const totalWp = waypoints.value.length;
+
     simInterval = setInterval(() => {
       simProgress.value += 1;
+
+      const currentIdx = getSimWaypointIndex();
+      if (currentIdx > lastWpIdx && currentIdx < totalWp) {
+        for (let i = lastWpIdx + 1; i <= currentIdx; i++) {
+          const wp = waypoints.value[i];
+          currentWaypointIndex.value = i;
+
+          addFlightEvent('waypoint_reached', `到达航点 WP${i + 1}`, {
+            waypointIndex: i,
+            waypointId: wp.id,
+            lat: wp.lat,
+            lng: wp.lng,
+            altitude: wp.altitude,
+          });
+
+          if (wp.action !== 'none') {
+            const actionNames: Record<string, string> = {
+              hover: '悬停',
+              photo: '拍照',
+              video: '录像',
+            };
+            addFlightEvent('action_start', `开始${actionNames[wp.action]}`, {
+              waypointIndex: i,
+              waypointId: wp.id,
+              details: `动作: ${wp.action}`,
+            });
+
+            addFlightEvent('action_end', `完成${actionNames[wp.action]}`, {
+              waypointIndex: i,
+              waypointId: wp.id,
+            });
+          }
+        }
+        lastWpIdx = currentIdx;
+      }
+
       if (simProgress.value >= 100) {
         simProgress.value = 100;
         isSimulating.value = false;
+        const endWp = waypoints.value[totalWp - 1];
+        addFlightEvent('landing', '无人机降落', {
+          waypointIndex: totalWp - 1,
+          waypointId: endWp.id,
+          lat: endWp.lat,
+          lng: endWp.lng,
+          altitude: 0,
+        });
         if (simInterval) clearInterval(simInterval);
       }
     }, 50);
@@ -156,6 +249,9 @@ export const useDroneStore = defineStore('drone', () => {
     isSimulating,
     simProgress,
     mapCenter,
+    flightEvents,
+    currentWaypointIndex,
+    simStartTime,
     totalDistance,
     estimatedTime,
     batteryPercent,
@@ -169,5 +265,7 @@ export const useDroneStore = defineStore('drone', () => {
     loadMockData,
     exportPlan,
     updatePlan,
+    clearFlightEvents,
+    addFlightEvent,
   };
 });

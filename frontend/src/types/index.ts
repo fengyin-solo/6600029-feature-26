@@ -37,3 +37,25 @@ export interface DroneConfig {
   consumptionRate: number;  // mAh/min
   safeDistance: number;     // meters from obstacles
 }
+
+export type FlightEventType =
+  | 'takeoff'
+  | 'waypoint_reached'
+  | 'action_start'
+  | 'action_end'
+  | 'landing'
+  | 'warning'
+  | 'info';
+
+export interface FlightEvent {
+  id: string;
+  type: FlightEventType;
+  timestamp: number;
+  waypointIndex?: number;
+  waypointId?: string;
+  message: string;
+  details?: string;
+  lat?: number;
+  lng?: number;
+  altitude?: number;
+}

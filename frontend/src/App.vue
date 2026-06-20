@@ -3,6 +3,8 @@ import { onMounted } from 'vue';
 import MapView from './components/MapView.vue';
 import TerrainProfile from './components/TerrainProfile.vue';
 import FlightStats from './components/FlightStats.vue';
+import FlightTimeline from './components/FlightTimeline.vue';
+import FlightToast from './components/FlightToast.vue';
 import { useDroneStore } from './store/drone';
 
 const store = useDroneStore();
@@ -119,7 +121,13 @@ function handlePlanRoute() {
 
         <!-- Flight stats -->
         <FlightStats />
+
+        <!-- Flight timeline -->
+        <FlightTimeline />
       </div>
     </div>
+
+    <!-- Toast notifications -->
+    <FlightToast />
   </div>
 </template>
